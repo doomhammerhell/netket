@@ -89,7 +89,7 @@ class MetropolisNumpySamplerState:
         return f"MetropolisNumpySamplerState({acc_string}rng state={self.rng})"
 
 
-@partial(jax.jit, static_argnums=0)
+@jax.jit
 def apply_model(machine, pars, weights):
     return machine.apply(pars, weights)
 
