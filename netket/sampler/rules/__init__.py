@@ -20,6 +20,7 @@ from .exchange import ExchangeRule
 from .hamiltonian import HamiltonianRule
 from .continuous_gaussian import GaussianRule
 from .langevin import LangevinRule
+from .combined import CombinedRule
 
 # numpy backend
 from .local_numpy import LocalRuleNumpy
