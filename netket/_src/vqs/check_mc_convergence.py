@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Union, cast
 import copy
 import math
+import sys
 import warnings
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
@@ -30,7 +32,7 @@ def check_mc_convergence(
     state_: MCState,
     op: AbstractOperator,
     min_chain_length: int = 50,
-    plot: bool = False,
+    plot: Union[bool, str, Path] = False,
     max_chain_length: int = 500,
 ):
     """
@@ -85,7 +87,12 @@ def check_mc_convergence(
         op: The operator whose local estimators are used to probe correlations.
         min_chain_length: Minimum number of samples per chain to accumulate
             before the convergence check is applied.
-        plot: If ``True``, display a diagnostic figure after the run.
+        plot: Controls diagnostic figure output.  ``False`` (default) skips
+            the figure entirely.  ``True`` shows it interactively when a
+            display is available, or saves it to ``mc_convergence.png`` when
+            running non-interactively (e.g. a SLURM batch job — detected via
+            ``sys.stdout.isatty()`` and the matplotlib backend).  A
+            ``str`` or :class:`~pathlib.Path` always saves to that path.
         max_chain_length: Hard upper limit on samples per chain.  The loop is
             terminated unconditionally once this many samples have been drawn.
 
@@ -233,8 +240,9 @@ def check_mc_convergence(
     )
     if _is_rank0:
         print(summary)
-    if plot:
+    if plot is not False and plot is not None:
         from netket._src.vqs.plot_mc_convergence import plot_mc_convergence
+        import matplotlib
         import matplotlib.pyplot as plt
 
         plot_mc_convergence(
@@ -243,7 +251,27 @@ def check_mc_convergence(
             orig_sweep_size=orig_sweep_size,
             final_sweep=final_sweep,
         )
-        plt.show()
+
+        # Determine save path: explicit string/Path arg, or auto when non-interactive.
+        if isinstance(plot, (str, Path)):
+            save_path = Path(plot)
+        elif not sys.stdout.isatty() or matplotlib.get_backend().lower() in (
+            "agg",
+            "pdf",
+            "ps",
+            "svg",
+            "cairo",
+        ):
+            save_path = Path("mc_convergence.png")
+        else:
+            save_path = None
+
+        if save_path is not None:
+            plt.savefig(save_path, dpi=150, bbox_inches="tight")
+            if _is_rank0:
+                print(f"  Plot saved to {save_path.resolve()}")
+        else:
+            plt.show()
     return stats, hist_data
 
 
