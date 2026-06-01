@@ -202,9 +202,24 @@ class StatsBatch:
         """Shape of the estimated quantity."""
         return self.mean.shape
 
+    def to_dict(self):
+        jsd = {}
+        jsd["Mean"] = _maybe_item(self.mean)
+        jsd["Sigma"] = _maybe_item(self.error_of_mean)
+        return jsd
+
+    def to_compound(self):
+        return "Mean", self.to_dict()
+
     def __repr__(self):
         err_max = float(jnp.max(jnp.abs(self.error_of_mean)))
         return f"StatsBatch(shape={self.shape}, max_err={err_max:.4g})"
+
+    def real(self):
+        return self.replace(mean=np.real(self.mean))
+
+    def imag(self):
+        return self.replace(mean=np.imag(self.mean))
 
 
 def _get_blocks(data, block_size):

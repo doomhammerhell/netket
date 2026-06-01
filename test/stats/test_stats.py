@@ -283,6 +283,70 @@ def test_stats_batch_repr():
     assert "(2, 2)" in r
 
 
+def test_stats_batch_to_dict():
+    from netket.stats import StatsBatch
+
+    mean = jnp.arange(4.0).reshape(2, 2)
+    err = jnp.full((2, 2), 0.1)
+    sb = StatsBatch(mean=mean, error_of_mean=err)
+
+    d = sb.to_dict()
+    assert set(d.keys()) == {"Mean", "Sigma"}
+    np.testing.assert_allclose(d["Mean"], mean)
+    np.testing.assert_allclose(d["Sigma"], err)
+    # Array-valued entries are kept as arrays (not coerced to python scalars).
+    assert np.shape(d["Mean"]) == (2, 2)
+    assert np.shape(d["Sigma"]) == (2, 2)
+
+
+def test_stats_batch_to_compound():
+    from netket.stats import StatsBatch
+
+    sb = StatsBatch(mean=jnp.ones((2, 2)), error_of_mean=jnp.full((2, 2), 0.05))
+    name, d = sb.to_compound()
+    assert name == "Mean"
+    assert d == sb.to_dict()
+
+
+def test_stats_batch_real_imag():
+    from netket.stats import StatsBatch
+
+    mean = jnp.array([[1.0 + 2.0j, 0.0 + 0.5j], [3.0 + 0.0j, -1.0 - 1.0j]])
+    err = jnp.full((2, 2), 0.1)
+    sb = StatsBatch(mean=mean, error_of_mean=err)
+
+    re = sb.real()
+    im = sb.imag()
+    assert isinstance(re, StatsBatch)
+    assert isinstance(im, StatsBatch)
+    np.testing.assert_allclose(re.mean, np.real(mean))
+    np.testing.assert_allclose(im.mean, np.imag(mean))
+    # error_of_mean is carried through unchanged.
+    np.testing.assert_allclose(re.error_of_mean, err)
+    np.testing.assert_allclose(im.error_of_mean, err)
+
+
+def test_stats_batch_history_dict_roundtrip():
+    # to_dict/to_compound make StatsBatch loggable into a HistoryDict, stacking
+    # the per-step matrices along a leading iteration axis.
+    from netket.stats import StatsBatch
+    from netket.utils.history import HistoryDict
+
+    hd = HistoryDict()
+    n_steps = 3
+    for i in range(n_steps):
+        sb = StatsBatch(
+            mean=jnp.full((1, 1), float(i)),
+            error_of_mean=jnp.full((1, 1), 0.01),
+        )
+        hd.push({"chi": sb}, step=i)
+
+    assert set(hd["chi"].keys()) == {"Mean", "Sigma"}
+    mean = np.asarray(hd["chi"]["Mean"])
+    assert mean.shape == (n_steps, 1, 1)
+    np.testing.assert_allclose(mean.ravel(), np.arange(n_steps))
+
+
 # ---------------------------------------------------------------------------
 # LocalEstimatorsBatch.to_stats() and OnlineStatsBatch.get_stats() dispatch
 # ---------------------------------------------------------------------------
