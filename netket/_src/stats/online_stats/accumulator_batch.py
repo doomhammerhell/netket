@@ -127,6 +127,7 @@ class OnlineStatsBatch(struct.Pytree):
         data,
         combinator: Callable,
         *,
+        decay: float | None = None,
         max_lag: int = 64,
     ) -> "OnlineStatsBatch":
         """Construct an :class:`OnlineStatsBatch` from an initial batch.
@@ -137,6 +138,8 @@ class OnlineStatsBatch(struct.Pytree):
         Args:
             data: Array of shape ``(n_chains, n_samples_per_chain, K)``.
             combinator: ``f: (K,) -> scalar | array``, must be JAX-traceable.
+            decay: EMA decay factor applied per update call to each per-channel
+                accumulator (default None = no decay).
             max_lag: Maximum lag for the per-channel online ACF estimator.
 
         Returns:
@@ -150,7 +153,8 @@ class OnlineStatsBatch(struct.Pytree):
         n_chains = data.shape[0]
         dtype = jnp.result_type(data.dtype, jnp.float64)
         estimators = tuple(
-            OnlineStats(n_chains, dtype=dtype, max_lag=max_lag) for _ in range(K)
+            OnlineStats(n_chains, dtype=dtype, decay=decay, max_lag=max_lag)
+            for _ in range(K)
         )
         estimator = cls(estimators=estimators, combinator=combinator)
         return estimator.update(data)
@@ -227,6 +231,7 @@ def online_statistics_batch(
     combinator: Callable,
     old_estimator: "OnlineStatsBatch | None" = None,
     *,
+    decay: float | None = None,
     max_lag: int = 64,
 ) -> OnlineStatsBatch:
     """Accumulate K-channel local estimators into an OnlineStatsBatch.
@@ -235,6 +240,8 @@ def online_statistics_batch(
         data: shape (n_chains, chain_len, K)
         combinator: f: (K,) -> scalar, JAX-traceable
         old_estimator: previous OnlineStatsBatch, or None to start fresh
+        decay: EMA decay factor applied per update call (only used when creating
+            a fresh accumulator; default None = no decay)
         max_lag: maximum ACF lag (only used when creating a fresh accumulator)
 
     Returns:
@@ -242,5 +249,7 @@ def online_statistics_batch(
     """
     data = jnp.asarray(data)
     if old_estimator is None:
-        return OnlineStatsBatch.from_data(data, combinator, max_lag=max_lag)
+        return OnlineStatsBatch.from_data(
+            data, combinator, decay=decay, max_lag=max_lag
+        )
     return old_estimator.update(data)
