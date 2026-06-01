@@ -328,3 +328,27 @@ def test_mixed_inheritance_no_base_init():
     b = B(b=2)
     assert b.a is None
     assert b.b == 2
+
+
+def test_nondefault_after_default_error():
+    """A field without a default declared after one with a default (often
+    inherited) should raise a helpful, netket-specific error rather than the
+    cryptic stdlib dataclasses message."""
+
+    @struct.dataclass
+    class Base:
+        x: float = 0.0
+
+    with pytest.raises(TypeError) as excinfo:
+
+        @struct.dataclass
+        class Derived(Base):
+            y: float
+
+    msg = str(excinfo.value)
+    # mentions the offending class...
+    assert "Derived" in msg
+    # ...explains the inherited-default cause...
+    assert "default" in msg
+    # ...and keeps the original stdlib message for context.
+    assert "follows default argument" in msg

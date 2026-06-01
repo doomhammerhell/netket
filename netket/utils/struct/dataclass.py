@@ -442,7 +442,23 @@ def dataclass(
     # proces all cached properties
     process_cached_properties(clz, globals=_globals)
     # create the dataclass
-    data_clz = dataclasses.dataclass(frozen=_frozen)(clz)
+    try:
+        data_clz = dataclasses.dataclass(frozen=_frozen)(clz)
+    except TypeError as err:
+        if "follows default argument" in str(err):
+            raise TypeError(
+                f"Cannot build the netket dataclass `{clz.__module__}.{clz.__qualname__}` "
+                f"because a field without a default value is declared after a field "
+                f"that has one ({err}).\n\n"
+                f"This most often happens when a subclass adds new fields without "
+                f"defaults while a base class already declares fields with defaults: "
+                f"the base-class fields come first in the generated `__init__`, so "
+                f"every field the subclass adds must then also have a default.\n\n"
+                f"Fix it by giving the new field(s) a default value, e.g. "
+                f"`my_field: float = float('nan')`, or by marking them as "
+                f"keyword-only with `field(..., kw_only=True)`."
+            ) from err
+        raise
 
     purge_cache_fields(data_clz)
     # attach the custom preprocessing of init arguments
