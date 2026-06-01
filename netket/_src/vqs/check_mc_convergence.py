@@ -437,6 +437,15 @@ def thermalise_mcmc(
         leave=True,
         disable=not (_is_rank0 and verbose),
     ) as pbar:
+        # Show diagnostics from the initial batch, so the postfix is populated
+        # even if the loop below exits immediately (already converged).
+        pbar.set_postfix(
+            {
+                "mean": f"{stats.mean:.4g}",
+                "R_hat": f"{rhat_val:.4f}",
+                "patience": f"{consecutive_good}/{patience}",
+            }
+        )
         while iter_count < min_iters or consecutive_good < patience:
             if iter_count >= max_iters:
                 msg = (
