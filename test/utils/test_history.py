@@ -190,6 +190,29 @@ def test_historydict_push():
             ), f"HistoryDict keys differ for '{key}'"
 
 
+def test_historydict_push_auto_step():
+    # When step is omitted, it defaults to (last recorded step + 1), starting
+    # at 0 for an empty HistoryDict.
+    tree = nk.utils.history.HistoryDict()
+    for _ in range(5):
+        tree.push({"a": 1, "b": 2})
+
+    np.testing.assert_array_equal(tree["a"].iters, [0, 1, 2, 3, 4])
+    np.testing.assert_array_equal(tree["b"].iters, [0, 1, 2, 3, 4])
+
+    # An explicit step is honoured, and the next auto step resumes from it.
+    tree.push({"a": 1, "b": 2}, step=99)
+    tree.push({"a": 1, "b": 2})
+    np.testing.assert_array_equal(tree["a"].iters, [0, 1, 2, 3, 4, 99, 100])
+
+    # Auto step also works for nested HistoryDicts.
+    nested = nk.utils.history.HistoryDict()
+    for _ in range(3):
+        nested.push({"e": -1.0, "diag": {"acc": 0.7}})
+    np.testing.assert_array_equal(nested["e"].iters, [0, 1, 2])
+    np.testing.assert_array_equal(nested["diag/acc"].iters, [0, 1, 2])
+
+
 def test_historydict_from_file_complex_nan(tmp_path):
     # See #2220 - can't reload log file with complex NaNs.
     log = nk.logging.RuntimeLog()

@@ -144,7 +144,7 @@ class HistoryDict:
         """
         return {k: self.__getitem__(k, wrap_dicts=False) for k in self._data.keys()}
 
-    def push(self, value, step: int) -> "HistoryDict":
+    def push(self, value, step: int | None = None) -> "HistoryDict":
         """
         Accumulate a new data point into this HistoryDict.
 
@@ -156,12 +156,24 @@ class HistoryDict:
         Args:
             value: A (nested) dictionary whose leaves are the new scalar or
                 array values to record.
-            step: The iteration index associated with this data point.
+            step: The iteration index associated with this data point. If
+                ``None`` (the default), it is set to one past the last step
+                recorded in any leaf history (``0`` for an empty HistoryDict),
+                yielding an auto-incrementing index ``0, 1, 2, ...`` that also
+                resumes correctly after an explicit ``step``.
 
         Returns:
             An updated :class:`HistoryDict` with the new data appended.
         """
         from netket.utils.history import accum_histories_in_tree
+        from netket.utils.history.history import History
+
+        if step is None:
+            histories = jax.tree_util.tree_leaves(
+                self._data, is_leaf=lambda x: isinstance(x, History)
+            )
+            last_steps = [int(h.iters[-1]) for h in histories if len(h) > 0]
+            step = max(last_steps, default=-1) + 1
 
         return accum_histories_in_tree(self, value, step=step)
 
