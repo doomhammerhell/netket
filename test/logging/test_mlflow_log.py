@@ -23,8 +23,12 @@ def vstate():
 
 
 @pytest.fixture(autouse=True)
-def isolated_mlflow(tmp_path):
+def isolated_mlflow(tmp_path, monkeypatch):
     mlflow = pytest.importorskip("mlflow")
+    # Recent MLflow versions (>=3.12) reject the file-based tracking backend
+    # unless this opt-out is set. The tests intentionally use a temporary
+    # filesystem store, so opt out explicitly.
+    monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
     mlflow.set_tracking_uri(str(tmp_path / "mlruns"))
     yield mlflow
     try:
