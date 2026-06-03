@@ -3,7 +3,11 @@
 
 # Change Log
 
-## NetKet 3.22 (In development)
+## NetKet 3.23 (In development)
+
+...
+
+## NetKet 3.22 (4 June 2026)
 
 ### New Features
 
@@ -123,7 +127,7 @@
 * Fixed a silent correctness bug in {class}`netket.optimizer.qgt.QGTOnTheFly` with sharding: when chunking was active, the S-matrix-vector product was silently scaled by `jax.device_count()`. The fix adds `pvary_args_tree` on `params` so that `jax.vjp`'s implicit backward-pass `psum` does not compound with the explicit `reduction_op_tree` psum [#2229](https://github.com/netket/netket/pull/2229).
 * Also fixes a sharding bug in `MetropolisSampler._reset`: when `reset_chains=False` the existing σ was not passed through `shard_along_axis`, causing silently non-sharded chains when σ was set from a plain NumPy array.
 
-## NetKet 3.21
+## NetKet 3.21 (15 December 2025)
 
 ### New Features
 * {class}`netket.driver.VMC_SR` and {class}`netket.driver.Infidelity_SR` now also support {class}`netket.vqs.FullSumState` [PR #2171](https://github.com/netket/netket/pull/2171)
@@ -137,8 +141,6 @@
 * Fixed a bug where doing ``A @ B`` with operators inheriting from ``SpecialOperator`` lead to incorrect results.
 * Fixed a bug where the connected elements of ``ProductDiscreteJaxOperator`` where incorrectly computed.	
 * Fixed a bug where defining a Quantum Chemistry 2nd quantised Hamiltonian across multiple nodes lead by default to different hamiltonians on every node [PR #2178](https://github.com/netket/netket/pull/2178).
-
-### Neural
 
 
 ## NetKet 3.20 (15 Octobre 2025)
@@ -182,7 +184,7 @@ We strongly suggst you read jax's sharding documentation.
 * Fix a bug where using non-differentiable parameters with chunking would lead to tracer leaks and errors when using `nk.optimizer.qgt.QGTOnTheFly`. This was due to incorrect capturing of the 'model_state' in some shard_maps.
 * Fix constraint validation bug in `SumConstrainedHilbertIndex` where `all_states()` returned invalid states for edge cases with single valid configurations (e.g., `Spin(s=1, N=4, total_sz=4)`). Fixes [#2126](https://github.com/netket/netket/issues/2126).
 
-## NetKet 3.19 (In development)
+## NetKet 3.19 (25 July 2025)
 
 This version will be the last one supporting Jax 0.5, and therefore will be the last to run on manylinux2014. 
 In practice, this will be the last version to run on computers/clusters with outdated OS/GLIBC. 
