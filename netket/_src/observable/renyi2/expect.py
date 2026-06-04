@@ -50,7 +50,7 @@ def _renyi2_kernel_values(
 
 
 def _renyi2_combinator(mu):
-    return -jnp.log2(mu[0]).real
+    return -jnp.log2(mu[0])
 
 
 @local_estimators.dispatch
@@ -88,7 +88,10 @@ def _(
         chunk_size=chunk_size,
     )
 
-    data = kernel_values.reshape(n_chains_eff, -1, 1)
+    # The mean of the SWAP kernel is the (real) purity Tr(ρ_A²): drop the
+    # imaginary part (delta-method jacfwd rejects complex) to support
+    # complex-dtyped ansätze.
+    data = kernel_values.real.reshape(n_chains_eff, -1, 1)
     return LocalEstimatorsBatch(data=data, combinator=_renyi2_combinator)
 
 

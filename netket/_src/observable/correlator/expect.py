@@ -45,6 +45,9 @@ def _stack_channels(vstate: MCState, ops, chunk_size) -> jax.Array:
     n_chains = vstate.samples.shape[0]
     channels = [_compute_local_estimator(vstate, op, chunk_size) for op in ops]
     data = jnp.stack(channels, axis=-1)
+    # Channels are Hermitian, so their means are real: drop the imaginary part
+    # (delta-method jacfwd rejects complex) to support complex-dtyped ansätze.
+    data = data.real
     return data.reshape(n_chains, -1, len(ops))
 
 

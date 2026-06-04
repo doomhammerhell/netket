@@ -65,6 +65,31 @@ def test_MCState(useExactSampler):
     np.testing.assert_allclose(S2_exact, S2_mean.real, atol=err)
 
 
+def test_complex_amplitude_ansatz():
+    """Renyi2 works on complex-amplitude ansätze (delta method needs real inputs).
+
+    The SWAP kernel is complex-dtyped for a complex model; its mean is the real
+    purity, so the local estimators must be realified rather than crashing in
+    ``jax.jacfwd``.
+    """
+    pytest.importorskip("qutip")
+
+    N = 3
+    hi = nk.hilbert.Spin(0.5, N)
+    ma = nk.models.RBM(alpha=1, param_dtype=complex)
+    subsys = [0, 1]
+    S2 = nkx.observable.Renyi2EntanglementEntropy(hi, subsys)
+
+    vs = nk.vqs.MCState(nk.sampler.ExactSampler(hi), ma, n_samples=int(2**14), seed=0)
+    S2_stats = vs.expect(S2)
+    S2_exact = _renyi2_exact(vs, subsys)
+
+    assert np.isrealobj(S2_stats.mean)
+    np.testing.assert_allclose(
+        S2_exact, S2_stats.mean, atol=3 * S2_stats.error_of_mean + 1e-2
+    )
+
+
 def test_FullSumState():
     pytest.importorskip("qutip")
 

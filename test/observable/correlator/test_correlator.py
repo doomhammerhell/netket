@@ -6,9 +6,9 @@ import numpy as np
 import netket as nk
 
 
-def _make_vstate(N=4, n_samples=512, exact=True):
+def _make_vstate(N=4, n_samples=512, exact=True, param_dtype=float):
     hi = nk.hilbert.Spin(s=1 / 2, N=N)
-    ma = nk.models.RBM(alpha=1, param_dtype=float)
+    ma = nk.models.RBM(alpha=1, param_dtype=param_dtype)
     if exact:
         sa = nk.sampler.ExactSampler(hilbert=hi)
     else:
@@ -41,6 +41,28 @@ class TestConnectedCorrelator:
         obs = nk.observable.ConnectedCorrelator(Z0, Z1)
         result = vs.expect(obs)
         assert hasattr(result, "mean")
+
+    @pytest.mark.parametrize("op", ["sigmaz", "sigmax"])
+    def test_complex_amplitude_ansatz(self, op):
+        """Correlator works on complex-amplitude ansätze (delta method needs real inputs).
+
+        Complex models (e.g. ViT) and k=0-projected states produce complex-dtyped
+        local estimators; the connected correlator must take the real part of the
+        Hermitian channels rather than crashing in ``jax.jacfwd``.
+        """
+        vs, hi = _make_vstate(n_samples=4096, param_dtype=complex)
+        make = getattr(nk.operator.spin, op)
+        A = make(hi, 0)
+        B = make(hi, 2)
+
+        obs = nk.observable.ConnectedCorrelator(A, B)
+        result = vs.expect(obs)
+
+        expected = (
+            vs.expect(A @ B).mean - vs.expect(A).mean * vs.expect(B).mean
+        ).real
+        assert np.isrealobj(result.mean)
+        np.testing.assert_allclose(result.mean, expected, atol=1e-6)
 
     def test_hilbert_mismatch_raises(self):
         hi1 = nk.hilbert.Spin(s=1 / 2, N=2)
