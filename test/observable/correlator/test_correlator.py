@@ -58,9 +58,7 @@ class TestConnectedCorrelator:
         obs = nk.observable.ConnectedCorrelator(A, B)
         result = vs.expect(obs)
 
-        expected = (
-            vs.expect(A @ B).mean - vs.expect(A).mean * vs.expect(B).mean
-        ).real
+        expected = (vs.expect(A @ B).mean - vs.expect(A).mean * vs.expect(B).mean).real
         assert np.isrealobj(result.mean)
         np.testing.assert_allclose(result.mean, expected, atol=1e-6)
 

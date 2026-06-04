@@ -58,16 +58,19 @@ def _setup(use_exact_sampler=True):
     return vs, vs_exact, H, H2
 
 
-def vscore_exact_fun(params, vs, H, H2, *, trace_diagonal):
+def vscore_exact_fun(params, vs, H, H2, *, trace_diagonal, N=None):
     params_old = vs.parameters
     vs.parameters = params
     state = vs.to_array()
     vs.parameters = params_old
 
+    if N is None:
+        N = vs.hilbert.size
+
     e_mean = (state.conj() @ (H @ state)).real
     e2_mean = (state.conj() @ (H2 @ state)).real
     var = e2_mean - e_mean**2
-    return var / (e_mean - trace_diagonal) ** 2
+    return N * var / (e_mean - trace_diagonal) ** 2
 
 
 @pytest.mark.parametrize(
@@ -173,3 +176,53 @@ def test_repr():
 
     assert "VScore" in repr(vscore_op)
     assert "-1.0" in repr(vscore_op)
+
+
+def test_N_default_spin():
+    # For spin systems N defaults to the number of sites (hilbert.size).
+    _, _, H, _ = _setup()
+    vscore_op = nk.observable.VScore(H, trace_diagonal=0.0)
+    assert vscore_op.N == H.hilbert.size == 3
+
+
+def test_N_override():
+    # An explicit N overrides the auto-detected value and scales the result.
+    _, vs_exact, H, H2 = _setup()
+    N = 7
+
+    vscore_op = nk.observable.VScore(H, trace_diagonal=0.0, N=N)
+    assert vscore_op.N == N
+
+    vscore_stats = vs_exact.expect(vscore_op)
+    vscore_exact = vscore_exact_fun(
+        vs_exact.parameters, vs_exact, H, H2, trace_diagonal=0.0, N=N
+    )
+    np.testing.assert_allclose(
+        vscore_exact.real, float(vscore_stats.mean.real), atol=1e-6
+    )
+
+
+def test_N_fermions():
+    # For fermions N is the total particle number, not n_orbitals nor hilbert.size.
+    n_orbitals = 3
+    n_fermions = 2
+    hi = nk.hilbert.SpinOrbitalFermions(n_orbitals, s=1 / 2, n_fermions=n_fermions)
+    H = nk.operator.FermionOperator2nd(hi, terms=["0^ 0"], weights=[1.0], dtype=complex)
+
+    vscore_op = nk.observable.VScore(H, trace_diagonal=0.0)
+    assert vscore_op.N == n_fermions
+    # sanity: this differs from hilbert.size (= n_orbitals * 2)
+    assert hi.size == n_orbitals * 2
+
+
+def test_N_fermions_unfixed_raises():
+    # Unfixed particle number -> N is ambiguous and must be passed explicitly.
+    hi = nk.hilbert.SpinOrbitalFermions(3, s=1 / 2)
+    H = nk.operator.FermionOperator2nd(hi, terms=["0^ 0"], weights=[1.0], dtype=complex)
+
+    with pytest.raises(ValueError, match="N"):
+        nk.observable.VScore(H, trace_diagonal=0.0)
+
+    # explicit N works
+    vscore_op = nk.observable.VScore(H, trace_diagonal=0.0, N=5)
+    assert vscore_op.N == 5

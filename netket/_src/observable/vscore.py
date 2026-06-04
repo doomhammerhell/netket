@@ -20,6 +20,7 @@ import jax
 import jax.numpy as jnp
 
 from netket._src.stats.local_estimators import LocalEstimatorsBatch
+from netket.jax import HashablePartial
 from netket.operator import AbstractOperator
 from netket.operator._abstract_observable import AbstractObservable
 from netket.stats import Stats
@@ -34,27 +35,61 @@ from netket.vqs import (
 from netket.vqs.mc.common import local_estimators
 
 
-def _vscore_combinator(trace_diagonal: float):
-    def combinator(mu):
-        return (mu[1] - mu[0] ** 2) / (mu[0] - trace_diagonal) ** 2
+def _vscore_combinator(trace_diagonal: float, N: int, mu):
+    return N * (mu[1] - mu[0] ** 2) / (mu[0] - trace_diagonal) ** 2
 
-    return combinator
+
+def _vscore_n_dof(hilbert) -> int:
+    r"""Estimate the V-score normalisation :math:`N` (number of degrees of
+    freedom) for a given Hilbert space, following arXiv:2302.04919.
+
+    For spin, qubit and bosonic lattice models this is the number of sites/modes
+    (``hilbert.size``). For fermionic systems the V-score is normalised by the
+    total particle number, so we use ``SpinOrbitalFermions.n_fermions`` instead
+    of ``hilbert.size`` (which counts spin-orbitals).
+    """
+    from netket.hilbert import SpinOrbitalFermions
+
+    if isinstance(hilbert, SpinOrbitalFermions):
+        if hilbert.n_fermions is None:
+            raise ValueError(
+                "Cannot infer the V-score normalisation `N` for a "
+                "SpinOrbitalFermions space with unfixed particle number. "
+                "Pass `N=...` explicitly to VScore: the V-score is normalised by "
+                "the total particle number (see arXiv:2302.04919)."
+            )
+        return hilbert.n_fermions
+    return hilbert.size
 
 
 class VScore(AbstractObservable):
     r"""
-    Observable computing the V-score of a quantum operator :math:`H`:
+    Observable computing the V-score of a quantum operator :math:`H`, as defined
+    in `Wu et al., arXiv:2302.04919 <https://arxiv.org/abs/2302.04919>`_:
 
     .. math::
 
         V_{\mathrm{score}} =
-        \frac{\mathrm{Var}(H)}{(\langle H \rangle - \mathrm{trace\_diagonal})^2}
+        \frac{N\,\mathrm{Var}(H)}{(\langle H \rangle - E_\infty)^2}
         =
-        \frac{\langle H^2 \rangle - \langle H \rangle^2}
-        {(\langle H \rangle - \mathrm{trace\_diagonal})^2}.
+        \frac{N\,(\langle H^2 \rangle - \langle H \rangle^2)}
+        {(\langle H \rangle - E_\infty)^2}.
 
-    The ``trace_diagonal`` parameter is a mandatory diagonal-energy shift used in
-    the denominator.
+    The ``trace_diagonal`` parameter is the infinite-temperature reference energy
+    :math:`E_\infty := \mathrm{Tr}(H) / \dim(\mathcal{H})` entering the denominator
+    (it is :math:`0` for traceless Hamiltonians, e.g. spin models built from Pauli
+    operators).
+
+    The prefactor :math:`N` is the number of degrees of freedom. By default it is
+    inferred from the Hilbert space:
+
+    * for spin, qubit and bosonic lattice models, ``N = hilbert.size`` (number of
+      sites/modes);
+    * for fermionic systems (:class:`~netket.hilbert.SpinOrbitalFermions`),
+      ``N`` is the total particle number ``hilbert.n_fermions``.
+
+    For composite or exotic Hilbert spaces, or to use a different convention, pass
+    ``N`` explicitly.
     """
 
     def __init__(
@@ -62,6 +97,7 @@ class VScore(AbstractObservable):
         operator: AbstractOperator,
         *,
         trace_diagonal: float,
+        N: int | None = None,
     ):
         super().__init__(operator.hilbert)
 
@@ -72,6 +108,7 @@ class VScore(AbstractObservable):
         self._operator = operator
         self._operator_squared = operator @ operator
         self._trace_diagonal = float(trace_diagonal)
+        self._N = int(N) if N is not None else _vscore_n_dof(operator.hilbert)
 
     @property
     def operator(self) -> AbstractOperator:
@@ -85,8 +122,16 @@ class VScore(AbstractObservable):
     def trace_diagonal(self) -> float:
         return self._trace_diagonal
 
+    @property
+    def N(self) -> int:
+        """The number of degrees of freedom normalising the V-score."""
+        return self._N
+
     def __repr__(self):
-        return f"VScore(op={self.operator}, trace_diagonal={self.trace_diagonal})"
+        return (
+            f"VScore(op={self.operator}, trace_diagonal={self.trace_diagonal}, "
+            f"N={self.N})"
+        )
 
 
 @local_estimators.dispatch
@@ -119,7 +164,9 @@ def vscore_local_estimators(
     data = jnp.stack([O_loc, O2_loc], axis=-1).reshape(n_chains, -1, 2)
     return LocalEstimatorsBatch(
         data=data,
-        combinator=_vscore_combinator(vscore_op.trace_diagonal),
+        combinator=HashablePartial(
+            _vscore_combinator, vscore_op.trace_diagonal, vscore_op.N
+        ),
     )
 
 
@@ -144,6 +191,7 @@ def expect(vstate: FullSumState, vscore_op: VScore):  # noqa: F811
         operator_mtrx,
         operator_squared_mtrx,
         vscore_op.trace_diagonal,
+        vscore_op.N,
     )
 
 
@@ -156,6 +204,7 @@ def _expect_vscore_fs(
     operator_mtrx,
     operator_squared_mtrx,
     trace_diagonal,
+    N,
 ):
     W = {"params": params, **model_state}
 
@@ -164,6 +213,6 @@ def _expect_vscore_fs(
 
     E_mean = (state.conj() @ (operator_mtrx @ state)).real
     E2_mean = (state.conj() @ (operator_squared_mtrx @ state)).real
-    vscore = (E2_mean - E_mean**2) / (E_mean - trace_diagonal) ** 2
+    vscore = N * (E2_mean - E_mean**2) / (E_mean - trace_diagonal) ** 2
 
     return Stats(mean=vscore, error_of_mean=0.0, variance=0.0)
