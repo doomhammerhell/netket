@@ -56,7 +56,14 @@ class EquinoxWrapper:
         module = self.recompose(variables)
         fun = getattr(module, method)
 
-        return fun(*args, key=rngs, **kwargs)
+        # Only forward a `key` to the model if one was actually provided.
+        # Passing `key=None` unconditionally breaks Equinox modules whose
+        # `__call__` does not declare a `key` argument (e.g. simple models
+        # that do not use randomness).
+        if rngs is not None:
+            kwargs["key"] = rngs
+
+        return fun(*args, **kwargs)
 
     def recompose(self, variables):
         import equinox as eqx

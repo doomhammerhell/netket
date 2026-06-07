@@ -95,6 +95,38 @@ def test_equinox_framework():
     np.testing.assert_allclose(vstate.model(hi.all_states()), logpsi)
 
 
+def test_equinox_framework_no_key_kwarg():
+    # Regression test: a plain Equinox module whose `__call__` does not
+    # declare a `key` argument must still work. Previously the wrapper
+    # unconditionally forwarded `key=None`, raising a TypeError.
+    pytest.importorskip("equinox")
+    import equinox as eqx
+
+    L = 8
+
+    class LinearNet(eqx.Module):
+        w: jax.Array
+
+        def __init__(self, key):
+            self.w = jax.random.normal(key, (L,))
+
+        def __call__(self, x):
+            return jnp.sum(x * self.w, axis=-1)
+
+    ma = LinearNet(jax.random.key(0))
+
+    hi = nk.hilbert.Qubit(L)
+    sampler = nk.sampler.MetropolisLocal(hi)
+    vstate = nk.vqs.MCState(sampler, ma)
+
+    assert vstate.n_parameters == L
+
+    logpsi = vstate.log_value(hi.all_states())
+    assert logpsi.shape == (hi.n_states,)
+
+    np.testing.assert_allclose(vstate.model(hi.all_states()), logpsi)
+
+
 def test_nnx_framework():
     pytest.importorskip("flax")
     from flax import nnx
