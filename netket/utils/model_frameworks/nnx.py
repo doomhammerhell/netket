@@ -108,6 +108,11 @@ class NNXFramework(ModuleFramework):
         return True
 
     @staticmethod
+    def wrapped_model_class(static_model: "NNXWrapper") -> type:
+        # The original nnx.Module class is recorded in the graphdef.
+        return _get_graphdef_type(static_model.graphdef)
+
+    @staticmethod
     def is_loaded() -> bool:
         # this should be not necessary, as netket requires and loads
         # Flax, but let's set a good example

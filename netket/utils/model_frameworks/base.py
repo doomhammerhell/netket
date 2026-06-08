@@ -32,6 +32,23 @@ class ModuleFramework(abc.ABC):
         return False
 
     @staticmethod
+    def wrapped_model_class(static_model: Any) -> type:
+        """
+        Returns the concrete user-defined model class, given the (possibly wrapped)
+        static module stored in :attr:`MCState._model`.
+
+        For flax-like frameworks the static module *is* the model, so this returns
+        its type. Frameworks that wrap the model into a static container (such as
+        ``flax.nnx`` or ``equinox``) override this to peek inside the wrapper and
+        return the original class.
+
+        This lets serialization code recover the original model class without
+        unwrapping (which would require the variables), e.g. to dispatch on whether
+        a custom serializer is registered for that class.
+        """
+        return type(static_model)
+
+    @staticmethod
     @abc.abstractmethod
     def is_loaded() -> bool:
         """

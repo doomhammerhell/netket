@@ -102,6 +102,11 @@ class EquinoxFramework(ModuleFramework):
         return True
 
     @staticmethod
+    def wrapped_model_class(static_model: "EquinoxWrapper") -> type:
+        # The static partition is an instance of the original equinox.Module class.
+        return type(static_model.static_module)
+
+    @staticmethod
     def is_loaded() -> bool:
         return "equinox" in sys.modules
 

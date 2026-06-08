@@ -95,6 +95,99 @@ def test_equinox_framework():
     np.testing.assert_allclose(vstate.model(hi.all_states()), logpsi)
 
 
+def _make_flax_model():
+    from flax import linen as nn
+
+    class FlaxModel(nn.Module):
+        features: int = 4
+
+        @nn.compact
+        def __call__(self, x):
+            return jnp.sum(nn.Dense(self.features)(x), axis=-1)
+
+    return FlaxModel, FlaxModel()
+
+
+def _make_nnx_model():
+    from flax import nnx
+
+    class NNXModel(nnx.Module):
+        def __init__(self, rngs: nnx.Rngs):
+            self.linear = nnx.Linear(4, 4, rngs=rngs)
+
+        def __call__(self, x):
+            return jnp.sum(self.linear(x), axis=-1)
+
+    return NNXModel, NNXModel(rngs=nnx.Rngs(0))
+
+
+def _make_equinox_model():
+    import equinox as eqx
+
+    class EquinoxModel(eqx.Module):
+        w: jax.Array
+
+        def __init__(self, key):
+            self.w = jax.random.normal(key, (4,))
+
+        def __call__(self, x):
+            return jnp.sum(x * self.w, axis=-1)
+
+    return EquinoxModel, EquinoxModel(jax.random.key(0))
+
+
+def _make_bound_flax_model():
+    # A *bound* flax module is unbound on `wrap` (via `module.unbind()`), so the
+    # static module is a genuine instance of the user class and the base default
+    # `wrapped_model_class` recovers it.
+    from flax import linen as nn
+
+    class BoundFlaxModel(nn.Module):
+        features: int = 4
+
+        def setup(self):
+            self.dense = nn.Dense(self.features)
+
+        def __call__(self, x):
+            return jnp.sum(self.dense(x), axis=-1)
+
+    module = BoundFlaxModel()
+    variables = module.init(jax.random.key(0), jnp.ones((2, 4)))
+    return BoundFlaxModel, module.bind(variables)
+
+
+@pytest.mark.parametrize(
+    "factory_name, required_module",
+    [
+        ("_make_flax_model", "flax"),
+        ("_make_bound_flax_model", "flax"),
+        ("_make_nnx_model", "flax"),
+        ("_make_equinox_model", "equinox"),
+    ],
+)
+def test_wrapped_model_class(factory_name, required_module):
+    # `wrapped_model_class` must recover the original user-defined model class
+    # from the (possibly wrapped) static module, without unwrapping it (which
+    # would require the variables).
+    pytest.importorskip(required_module)
+
+    cls, module = globals()[factory_name]()
+
+    framework = nk.utils.model_frameworks.identify_framework(module)
+    _variables, static_module = framework.wrap(module)
+
+    # The static module may be a wrapper (nnx/equinox) or the module itself
+    # (flax, bound flax), but in all cases we must recover the original class.
+    assert framework.wrapped_model_class(static_module) is cls
+
+    # And the same must hold for the static module actually stored in MCState.
+    hi = nk.hilbert.Qubit(4)
+    sampler = nk.sampler.MetropolisLocal(hi)
+    vstate = nk.vqs.MCState(sampler, module)
+
+    assert vstate._model_framework.wrapped_model_class(vstate._model) is cls
+
+
 def test_equinox_framework_no_key_kwarg():
     # Regression test: a plain Equinox module whose `__call__` does not
     # declare a `key` argument must still work. Previously the wrapper
