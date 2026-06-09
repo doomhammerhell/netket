@@ -18,6 +18,8 @@ import random
 import sys
 
 TIPS = [
+    # News
+    "NetKet 3.22 has plenty of new stuff! Check it out at https://www.netket.org/posts/07-netket322/",
     # Drivers
     "Prefer the new nk.driver.VMC_SR over VMC which supports minSR and SPRING.",
     "Use driver.run(..., timeit=True) to know where your dominant cost is.",
