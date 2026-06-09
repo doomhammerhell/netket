@@ -266,6 +266,37 @@ def test_invalid_loss_stopping_correct_interval():
     assert cb._last_valid_iter == 2
 
 
+def test_save_variational_state_max_to_keep(tmp_path):
+    pytest.importorskip("nqxpack")
+
+    interval = 5
+    n_iter = 20
+    max_to_keep = 2
+    root = "state"
+
+    cb = nk.callbacks.SaveVariationalState(
+        path=tmp_path, interval=interval, max_to_keep=max_to_keep
+    )
+
+    # A foreign file that does not match the {root}_{step}.nk pattern must never
+    # be deleted by the pruning logic.
+    guard = tmp_path / f"{root}_keepme.nk"
+    guard.write_text("foreign")
+
+    vmc = _vmc()
+    vmc.run(n_iter, callback=cb)
+
+    saved = sorted(p.name for p in tmp_path.glob(f"{root}_*.nk"))
+
+    # Only the most recent `max_to_keep` checkpoints survive, plus the guard file.
+    assert guard.exists()
+    assert f"{root}_keepme.nk" in saved
+    checkpoints = [name for name in saved if name != f"{root}_keepme.nk"]
+    assert len(checkpoints) == max_to_keep
+    # The newest saves are the last interval step (15) and the final step (20).
+    assert checkpoints == [f"{root}_00015.nk", f"{root}_00020.nk"]
+
+
 def test_convergence_stopping():
     loss_values = [10] + [9] * 12 + [1] * 4
     es = nk.callbacks.ConvergenceStopping(target=9.0, patience=10, smoothing_window=1)
