@@ -88,9 +88,8 @@ class SaveVariationalState(AbstractCallback, mutable=True):
             _nqxpack_save(driver.state, path)
 
     def on_run_end(self, step, driver):
-        if step % self._interval == 0:
-            path = self._path / f"{self._file_name_root}_{step:05d}.nk"
-            _nqxpack_save(driver.state, path)
+        path = self._path / f"{self._file_name_root}_{step:05d}.nk"
+        _nqxpack_save(driver.state, path)
 
 
 @timing.timed
