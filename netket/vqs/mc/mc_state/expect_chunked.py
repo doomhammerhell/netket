@@ -62,11 +62,16 @@ def get_local_kernel(  # noqa: F811
 
 
 def _local_continuous_kernel(logpsi, pars, σ, op, *, chunk_size=None):
+    # IMPORTANT: pars must be passed as explicit arg (not captured in the lambda) so
+    # that shard_map's pvary/pcast mechanism can give it Manual sharding inside
+    # shard_map. If captured, pars keeps its outer (Auto-mesh) sharding, which clashes
+    # with the Manual mesh of the shard_map context for some ops (e.g. gather/indexing
+    # of a parameter inside the model), raising a mesh-mismatch error.
     return nkjax.apply_chunked(
-        lambda op, x: op._expect_kernel(logpsi, pars, x),
-        in_axes=(None, 0),
+        lambda op, pars, x: op._expect_kernel(logpsi, pars, x),
+        in_axes=(None, None, 0),
         chunk_size=chunk_size,
-    )(op, σ)
+    )(op, pars, σ)
 
 
 @dispatch

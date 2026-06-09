@@ -83,3 +83,55 @@ def test_expect():
 
     np.testing.assert_allclose(sol_nc.mean, sol.mean, atol=1e-7)
     np.testing.assert_allclose(O_grad_nc, O_grad, atol=1e-7)
+
+
+class GatherModel(nn.Module):
+    """Model that gathers a parameter by an index array.
+
+    The gather op (advanced indexing) on a parameter leaf is what triggers the
+    regression in `test_continuous_kinetic_param_gather_chunked`: under sharding
+    the parameter must be `pvary`/`pcast`-ed into the shard_map's Manual mesh,
+    otherwise `jnp.take`/indexing raises a mesh-mismatch error.
+    """
+
+    @nn.compact
+    def __call__(self, x):
+        coeff = self.param("coeff", lambda k, *a: jnp.linspace(0.1, 0.4, 4))
+        vecs = self.param("vecs", lambda k, *a: jnp.ones((6, x.shape[-1])))
+        idx = np.array([0, 1, 2, 3, 0, 1])
+        c = coeff[idx]  # gather a parameter leaf by an index array
+        return jnp.einsum(
+            "k,...k->...", c, jnp.cos(jnp.einsum("...d,kd->...k", x, vecs))
+        )
+
+
+def test_continuous_kinetic_param_gather_chunked():
+    """Regression test for a sharding bug in the chunked continuous-operator kernel.
+
+    `KineticEnergy` differentiates `logpsi(params, x)`, so it actually evaluates
+    the model parameters (unlike `PotentialEnergy`). The chunked continuous kernel
+    used to capture `pars` in a closure instead of passing it as an explicit
+    argument of `nkjax.apply_chunked`, so `pars` never crossed the shard_map
+    boundary and kept its (Auto-mesh) sharding. Most ops tolerate this, but a
+    gather of a parameter leaf raised a Manual-vs-Auto mesh-mismatch error under
+    sharding. This test runs the chunked path and checks it matches the unchunked
+    result. Under the distributed/sharded test runs it guards against regressions.
+    """
+    hilb = nkx.hilbert.Particle(
+        N=1, geometry=nkx.geometry.Cell(d=2, L=(5.0,) * 2, pbc=True)
+    )
+    kin = nk.operator.KineticEnergy(hilb, mass=1.0)
+    sab = nk.sampler.MetropolisGaussian(hilb, sigma=1.0, n_chains=16, sweep_size=1)
+
+    vs = nk.vqs.MCState(
+        sab, GatherModel(), n_samples=512, sampler_seed=1234, seed=1234
+    )
+
+    assert vs.chunk_size is None
+    sol_nc = vs.expect(kin)
+
+    vs.chunk_size = 8
+    assert vs.chunk_size == 8
+    sol = vs.expect(kin)  # used to raise under sharding
+
+    np.testing.assert_allclose(sol_nc.mean, sol.mean, atol=1e-7)
