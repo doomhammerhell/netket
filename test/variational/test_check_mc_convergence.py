@@ -155,6 +155,23 @@ def test_expect_to_precision_rtol(vstate):
     assert s.error_of_mean / abs(s.mean) <= 0.1
 
 
+def test_expect_to_precision_combined_tol(vstate):
+    """With both tolerances the criterion is err <= atol + rtol * |mean|.
+
+    An unachievable rtol must not prevent convergence: atol acts as an
+    absolute floor (NumPy convention), so this stops well before max_iter.
+    """
+    H = nk.operator.Ising(vstate.hilbert, nk.graph.Chain(4), h=1.0)
+    stats = vstate.expect_to_precision(
+        H, atol=0.5, rtol=1e-12, max_iter=500, verbose=False
+    )
+    s = stats.get_stats()
+    assert math.isfinite(s.mean)
+    assert s.error_of_mean <= 0.5 + 1e-12 * abs(s.mean)
+    # stopped on the atol floor instead of running to max_iter
+    assert stats.n_samples < 500 * vstate.n_samples
+
+
 def test_expect_to_precision_max_iter(vstate):
     """Stops at max_iter without error when tolerance is unachievable."""
     H = nk.operator.Ising(vstate.hilbert, nk.graph.Chain(4), h=1.0)

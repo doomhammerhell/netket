@@ -893,8 +893,12 @@ class MCState(VariationalState):
         ``max_iter`` iterations are exhausted.  A progress bar is shown by
         default.
 
-        At least one of ``atol`` or ``rtol`` must be provided.  If both are
-        given, sampling continues until *both* are simultaneously satisfied.
+        At least one of ``atol`` or ``rtol`` must be provided.  Sampling
+        stops when ``error_of_mean ≤ atol + rtol * |mean|``, with a missing
+        tolerance treated as 0 (NumPy convention): with only ``atol`` the
+        criterion is absolute, with only ``rtol`` it is relative, and with
+        both, ``atol`` acts as an absolute floor that keeps the relative
+        criterion well-behaved when the mean is close to zero.
 
         Unlike :meth:`expect`, this method modifies the state's sampler in
         place (new samples are drawn on ``self`` directly), so the sampler
@@ -903,10 +907,8 @@ class MCState(VariationalState):
         Args:
             op: The operator :math:`O` whose expectation value
                 :math:`\langle O \rangle` is estimated.
-            atol: Desired absolute standard error of the mean.  Sampling stops
-                when ``error_of_mean ≤ atol``.
-            rtol: Desired relative standard error of the mean.  Sampling stops
-                when ``error_of_mean / |mean| ≤ rtol``.
+            atol: Desired absolute standard error of the mean.
+            rtol: Desired relative standard error of the mean.
             max_iter: Maximum number of sampling iterations before stopping
                 unconditionally.
             max_lag: Maximum lag used by the online autocorrelation estimator.
