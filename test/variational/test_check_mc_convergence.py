@@ -172,6 +172,59 @@ def test_expect_to_precision_combined_tol(vstate):
     assert stats.n_samples < 500 * vstate.n_samples
 
 
+def test_expect_to_precision_tol_pytree(vstate):
+    """Per-operator tolerances as pytrees matching the operator structure."""
+    hi = vstate.hilbert
+    H = nk.operator.Ising(hi, nk.graph.Chain(4), h=1.0)
+    M = sum(nk.operator.spin.sigmaz(hi, i) for i in range(hi.size))
+    ops = {"energy": H, "mag": M}
+    stats = vstate.expect_to_precision(
+        ops,
+        atol={"energy": None, "mag": 0.5},
+        rtol={"energy": 0.1, "mag": None},
+        max_iter=500,
+        verbose=False,
+    )
+    se = stats["energy"].get_stats()
+    sm = stats["mag"].get_stats()
+    assert se.error_of_mean <= 0.1 * abs(se.mean)
+    assert sm.error_of_mean <= 0.5
+
+
+def test_expect_to_precision_tol_scalar_broadcast(vstate):
+    """A scalar tolerance broadcasts over a pytree of operators."""
+    hi = vstate.hilbert
+    H = nk.operator.Ising(hi, nk.graph.Chain(4), h=1.0)
+    M = sum(nk.operator.spin.sigmaz(hi, i) for i in range(hi.size))
+    stats = vstate.expect_to_precision(
+        {"energy": H, "mag": M}, atol=0.5, max_iter=500, verbose=False
+    )
+    for s in stats.values():
+        assert s.get_stats().error_of_mean <= 0.5
+
+
+def test_expect_to_precision_tol_structure_mismatch(vstate):
+    """A tolerance pytree must match the operator structure."""
+    H = nk.operator.Ising(vstate.hilbert, nk.graph.Chain(4), h=1.0)
+    with pytest.raises(ValueError, match="matching the operator structure"):
+        vstate.expect_to_precision(
+            {"energy": H}, atol={"wrong_key": 0.5}, verbose=False
+        )
+
+
+def test_expect_to_precision_tol_missing_leaf(vstate):
+    """Every operator leaf must have at least one non-None tolerance."""
+    hi = vstate.hilbert
+    H = nk.operator.Ising(hi, nk.graph.Chain(4), h=1.0)
+    M = sum(nk.operator.spin.sigmaz(hi, i) for i in range(hi.size))
+    with pytest.raises(ValueError, match="atol.*rtol"):
+        vstate.expect_to_precision(
+            {"energy": H, "mag": M},
+            atol={"energy": 0.5, "mag": None},
+            verbose=False,
+        )
+
+
 def test_expect_to_precision_max_iter(vstate):
     """Stops at max_iter without error when tolerance is unachievable."""
     H = nk.operator.Ising(vstate.hilbert, nk.graph.Chain(4), h=1.0)

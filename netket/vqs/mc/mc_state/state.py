@@ -872,8 +872,8 @@ class MCState(VariationalState):
         self,
         op: AbstractOperator,
         *,
-        atol: float | None = None,
-        rtol: float | None = None,
+        atol: float | PyTree | None = None,
+        rtol: float | PyTree | None = None,
         max_iter: int = 10_000,
         max_lag: int = 64,
         verbose: bool = True,
@@ -904,11 +904,37 @@ class MCState(VariationalState):
         place (new samples are drawn on ``self`` directly), so the sampler
         state is advanced as a side effect.
 
+        Example:
+            ``op`` may also be a pytree of operators, in which case ``atol``
+            and ``rtol`` may either be scalars (applied to every operator) or
+            pytrees with the same structure as ``op``, giving per-operator
+            tolerances.  A ``None`` entry means "no constraint of this kind
+            for this operator"; every operator must have at least one
+            non-``None`` tolerance.  Each operator stops being sampled as
+            soon as its own criterion is met, so a tightly-converged
+            observable does not keep paying for a loose one:
+
+            .. code-block:: python
+
+                ops = {"energy": H, "mag": M}
+                stats = vs.expect_to_precision(
+                    ops,
+                    rtol={"energy": 0.001, "mag": 0.05},
+                    atol=1e-6,  # global absolute floor
+                )
+                stats["energy"].get_stats()  # Stats with mean, error, ...
+                stats["mag"].n_samples       # samples used for this operator
+
         Args:
             op: The operator :math:`O` whose expectation value
-                :math:`\langle O \rangle` is estimated.
-            atol: Desired absolute standard error of the mean.
-            rtol: Desired relative standard error of the mean.
+                :math:`\langle O \rangle` is estimated, or a pytree of
+                operators.
+            atol: Desired absolute standard error of the mean.  A scalar, or
+                a pytree matching the structure of ``op`` for per-operator
+                tolerances.
+            rtol: Desired relative standard error of the mean.  A scalar, or
+                a pytree matching the structure of ``op`` for per-operator
+                tolerances.
             max_iter: Maximum number of sampling iterations before stopping
                 unconditionally.
             max_lag: Maximum lag used by the online autocorrelation estimator.
@@ -916,14 +942,16 @@ class MCState(VariationalState):
                 showing the current error and tolerances.
 
         Returns:
-            The final :class:`~netket.stats.OnlineStatistics` accumulator.
+            The final :class:`~netket.stats.OnlineStatistics` accumulator,
+            or a pytree thereof matching the structure of ``op``.
             Call ``.get_stats()`` on it to obtain a standard
             :class:`~netket.stats.Stats` object with mean, variance, and
             error of the mean.
 
         Raises:
-            ValueError: If neither ``atol`` nor ``rtol`` is provided, or if
-                the sampler is not a
+            ValueError: If an operator ends up with neither an ``atol`` nor
+                an ``rtol``, if a tolerance pytree does not match the
+                structure of ``op``, or if the sampler is not a
                 :class:`~netket.sampler.MetropolisSampler`.
 
         See Also:
