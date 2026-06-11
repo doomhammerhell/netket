@@ -15,6 +15,7 @@
 import copy
 import os
 import tempfile
+from collections.abc import Collection
 from numbers import Number
 from typing import Any, TYPE_CHECKING
 
@@ -28,6 +29,12 @@ from netket.utils import struct
 
 if TYPE_CHECKING:
     from netket.vqs import VariationalState
+
+
+def _expand_node(root, tree, **kwargs):
+    if hasattr(tree, "ndim") and tree.ndim == 1:
+        return enumerate(tree)
+    return None
 
 
 def _visit_leaf(root, tree, *, data):
@@ -84,6 +91,10 @@ class MLFlowLog(AbstractCallback):
             steps.  Only relevant when ``save_params=True``.
         metadata: Optional flat dict of key/value pairs logged as MLflow
             params at the start of the run.
+        ignore: Optional collection of top-level log-dict keys to skip
+            entirely.  Useful for suppressing entries that cannot be
+            serialised as MLflow metrics (e.g. large arrays or custom
+            objects).
 
     .. tip::
         Use ``metadata`` to attach a flat dict of hyper-parameters (learning rate,
@@ -143,6 +154,7 @@ class MLFlowLog(AbstractCallback):
     _tags: Any = struct.field(pytree_node=False, serialize=False)
     _save_params: Any = struct.field(pytree_node=False, serialize=False)
     _save_params_every: Any = struct.field(pytree_node=False, serialize=False)
+    _ignore: Any = struct.field(pytree_node=False, serialize=False)
     _run: Any = struct.field(pytree_node=False, serialize=False)
     _old_step: Any = struct.field(pytree_node=False, serialize=False)
     _steps_since_last_params: Any = struct.field(pytree_node=False, serialize=False)
@@ -156,6 +168,7 @@ class MLFlowLog(AbstractCallback):
         save_params: bool = True,
         save_params_every: int = 50,
         metadata: dict | None = None,
+        ignore: Collection[str] | None = None,
     ):
         super().__init__()
         self._metadata = metadata or {}
@@ -170,6 +183,7 @@ class MLFlowLog(AbstractCallback):
         self._tags = tags
         self._save_params = save_params
         self._save_params_every = save_params_every
+        self._ignore = frozenset(ignore) if ignore is not None else frozenset()
 
         if save_params and save_params_every < 1:
             raise ValueError("`save_params_every` must be >= 1")
@@ -201,7 +215,9 @@ class MLFlowLog(AbstractCallback):
             self._init_mlflow()
 
         data: list[tuple[str, Any]] = []
-        walk_tree_with_path(item, "", visit_leaf=_visit_leaf, data=data)
+        if self._ignore:
+            item = {k: v for k, v in item.items() if k not in self._ignore}
+        walk_tree_with_path(item, "", visit_leaf=_visit_leaf, expand_node=_expand_node, data=data)
 
         metrics = {}
         for key, val in data:

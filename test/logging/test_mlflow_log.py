@@ -225,6 +225,38 @@ def test_metadata_not_relogged_on_resume(isolated_mlflow):
     del log2
 
 
+@common.skipif_distributed
+def test_mlflow_log_1d_array_expanded(isolated_mlflow):
+    mlflow = isolated_mlflow
+
+    log = nk.logging.MLFlowLog(experiment_name="test_1d_array")
+    log(0, {"vals": jnp.array([1.0, 2.0, 3.0])})
+
+    run_id = log._run.info.run_id
+    del log
+
+    client = mlflow.tracking.MlflowClient()
+    assert client.get_metric_history(run_id, "vals.0")[0].value == pytest.approx(1.0)
+    assert client.get_metric_history(run_id, "vals.1")[0].value == pytest.approx(2.0)
+    assert client.get_metric_history(run_id, "vals.2")[0].value == pytest.approx(3.0)
+
+
+@common.skipif_distributed
+def test_mlflow_log_ignore(isolated_mlflow):
+    mlflow = isolated_mlflow
+
+    log = nk.logging.MLFlowLog(experiment_name="test_ignore", ignore=["skip_me"])
+    log(0, {"Energy": 1.0, "skip_me": jnp.array([1.0, 2.0, 3.0])})
+
+    run_id = log._run.info.run_id
+    del log
+
+    client = mlflow.tracking.MlflowClient()
+    assert len(client.get_metric_history(run_id, "Energy")) == 1
+    # ignored key should produce no metrics at all
+    assert len(client.get_metric_history(run_id, "skip_me.0")) == 0
+
+
 @common.onlyif_distributed
 def test_write_only_on_master(vstate, isolated_mlflow):
     rank = jax.process_index()
