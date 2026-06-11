@@ -357,14 +357,16 @@ class VMC_SR(AbstractOptimizationDriver):
             use_ntk = variational_state.n_parameters > variational_state.n_samples
             if jax.process_index() == 0:
                 print(
-                    "Automatic SR implementation choice: ", "NTK" if use_ntk else "QGT"
+                    f"Automatic SR implementation choice: {'NTK' if use_ntk else 'QGT'}"
+                    f" (n_parameters={variational_state.n_parameters}, n_samples={variational_state.n_samples})"
                 )
 
         if on_the_fly is None:
-            if use_ntk:
-                on_the_fly = True
-            else:
-                on_the_fly = False
+            on_the_fly = use_ntk
+            if jax.process_index() == 0:
+                print(
+                    f"Automatic SR on_the_fly choice: {'True' if on_the_fly else 'False'}"
+                )
         elif on_the_fly and not use_ntk:
             raise ValueError(
                 """
