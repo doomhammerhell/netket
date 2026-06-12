@@ -25,6 +25,13 @@ class StopRun(Exception):
     pass
 
 
+#: ``callback_order`` for callbacks that may raise :class:`StopRun`. They run
+#: *last* (after observables at 0 and loggers at 10) so that, on the step a
+#: callback stops the run, no later callback in the hook is skipped — a skipped
+#: collective would deadlock the run under ``jax.distributed``.
+STOPPING_CALLBACK_ORDER = 100
+
+
 class AbstractCallback(struct.Pytree, mutable=True):
     """
     Abstract base class for callbacks in advanced variational drivers.
@@ -71,7 +78,9 @@ class AbstractCallback(struct.Pytree, mutable=True):
         Lower numbers are called first, and higher numbers are called later.
 
         This can be redefined in subclasses to change the order in which callbacks are called.
-        (Default: 0, for all callbacks, 10 for loggers).
+        (Default: 0, for all callbacks, 10 for loggers, and
+        :data:`STOPPING_CALLBACK_ORDER` (100) for callbacks that may raise
+        :class:`StopRun`, so they run after everything else).
         """
         return 0
 

@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from netket._src.callbacks.base import AbstractCallback, StopRun
+from netket._src.callbacks.base import (
+    AbstractCallback,
+    StopRun,
+    STOPPING_CALLBACK_ORDER,
+)
 from netket.utils import struct
 
 
@@ -29,6 +33,11 @@ class _StopAtTime(AbstractCallback):
 
     def __init__(self, T_final: float):
         self.T_final = T_final
+
+    @property
+    def callback_order(self) -> int:
+        # Run last, so raising StopRun never skips a later callback's collective.
+        return STOPPING_CALLBACK_ORDER
 
     def on_step_end(self, step, log_data, driver):
         if driver.t >= self.T_final:

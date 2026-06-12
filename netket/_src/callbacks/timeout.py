@@ -16,7 +16,11 @@ import time
 
 from netket.utils import struct
 
-from netket._src.callbacks.base import AbstractCallback, StopRun
+from netket._src.callbacks.base import (
+    AbstractCallback,
+    StopRun,
+    STOPPING_CALLBACK_ORDER,
+)
 
 
 class Timeout(AbstractCallback, mutable=True):
@@ -47,11 +51,40 @@ class Timeout(AbstractCallback, mutable=True):
         self.timeout = timeout
         self._init_time = None
 
+    @property
+    def callback_order(self) -> int:
+        # Run last, so raising StopRun never skips a later callback's collective.
+        return STOPPING_CALLBACK_ORDER
+
     def on_run_start(self, step, driver):
         self._init_time = time.time()
 
     def on_step_end(self, step, log_data, driver):
-        if time.time() - self._init_time >= self.timeout:
+        elapsed = time.time() - self._init_time
+        # Wall clocks and per-process start instants differ across nodes, so the
+        # raw per-rank decision can disagree and (without this) stop the run on
+        # different steps. Take process 0's decision on every rank, so the whole
+        # run times out in lock-step on a single authoritative clock.
+        if _timed_out_on_master(elapsed >= self.timeout):
             raise StopRun(
                 f"Timeout: training stopped after {self.timeout:.1f} seconds."
             )
+
+
+def _timed_out_on_master(local_timed_out: bool) -> bool:
+    """Return process 0's timeout decision on every process.
+
+    A no-op returning ``local_timed_out`` unchanged in single-process runs.
+    """
+    import jax
+
+    if jax.process_count() == 1:
+        return local_timed_out
+
+    import numpy as np
+    from jax.experimental import multihost_utils
+
+    out = multihost_utils.broadcast_one_to_all(
+        np.asarray(int(local_timed_out), dtype=np.int32)
+    )
+    return bool(int(out))

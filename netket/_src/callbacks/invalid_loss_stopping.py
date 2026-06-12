@@ -16,7 +16,11 @@ import numpy as np
 
 from netket.utils import struct
 
-from netket._src.callbacks.base import AbstractCallback, StopRun
+from netket._src.callbacks.base import (
+    AbstractCallback,
+    StopRun,
+    STOPPING_CALLBACK_ORDER,
+)
 
 
 class InvalidLossStopping(AbstractCallback, mutable=True):
@@ -49,6 +53,11 @@ class InvalidLossStopping(AbstractCallback, mutable=True):
         self.monitor = monitor
         self.patience = patience
         self._last_valid_iter = 0
+
+    @property
+    def callback_order(self) -> int:
+        # Run last, so raising StopRun never skips a later callback's collective.
+        return STOPPING_CALLBACK_ORDER
 
     def on_step_end(self, step, log_data, driver):
         # reset if the driver was restarted

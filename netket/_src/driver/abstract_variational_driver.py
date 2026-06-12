@@ -479,7 +479,15 @@ class AbstractDriver(struct.Pytree, mutable=True):
                 callbacks.on_run_end(self.step_count, self)
             except StopRun as error:
                 callbacks.on_run_end(self.step_count, self)
-                print("Stopping early because of : ", error)
+                # If all processes did not raise StopRun, some will deadlock here.
+                # This means you have a bug somewhere in YOUR code.
+                if jax.process_count() > 1:
+                    print(
+                        f"[process {jax.process_index()}/{jax.process_count()}] "
+                        f"Stopping early because of : {error}"
+                    )
+                else:
+                    print("Stopping early because of : ", error)
 
             except KeyboardInterrupt as error:
                 callbacks.on_run_error(self.step_count, error, self)

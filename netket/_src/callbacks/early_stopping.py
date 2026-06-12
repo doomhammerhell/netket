@@ -16,7 +16,11 @@ import numpy as np
 
 from netket.utils import struct
 
-from netket._src.callbacks.base import AbstractCallback, StopRun
+from netket._src.callbacks.base import (
+    AbstractCallback,
+    StopRun,
+    STOPPING_CALLBACK_ORDER,
+)
 
 
 class EarlyStopping(AbstractCallback, mutable=True):
@@ -86,6 +90,11 @@ class EarlyStopping(AbstractCallback, mutable=True):
         self._best_val = np.inf
         self._best_iter = 0
         self._best_patience_counter = 0
+
+    @property
+    def callback_order(self) -> int:
+        # Run last, so raising StopRun never skips a later callback's collective.
+        return STOPPING_CALLBACK_ORDER
 
     def on_step_end(self, step, log_data, driver):
         if step < self.start_from_step:
